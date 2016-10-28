@@ -2477,7 +2477,7 @@ efi_main (EFI_HANDLE passed_image_handle, EFI_SYSTEM_TABLE *passed_systab)
 	/*
 	 * if SHIM_DEBUG is set, wait for a debugger to attach.
 	 */
-	debug_hook();
+///	debug_hook();
 
 	/*
 	 * Check whether the user has configured the system to run in
@@ -2499,40 +2499,88 @@ efi_main (EFI_HANDLE passed_image_handle, EFI_SYSTEM_TABLE *passed_systab)
 	 * Tell the user that we're in insecure mode if necessary
 	 */
 	if (user_insecure_mode) {
-		Print(L"Booting in insecure mode\n");
+    Print(L"WARNNIG: Booting in insecure mode\n");
 		uefi_call_wrapper(BS->Stall, 1, 2000000);
 	}
 
 	/*
 	 * Enter MokManager if necessary
-	 */
-	efi_status = check_mok_request(image_handle);
+   */
+///	efi_status = check_mok_request(image_handle);
 
 	/*
 	 * Copy the MOK list to a runtime variable so the kernel can
 	 * make use of it
 	 */
-	efi_status = mirror_mok_list();
-
-	efi_status = mirror_mok_list_x();
+///	efi_status = mirror_mok_list();
+///	efi_status = mirror_mok_list_x();
 
 	/*
 	 * Copy the MOK SB State to a runtime variable so the kernel can
 	 * make use of it
 	 */
-	efi_status = mirror_mok_sb_state();
+///	efi_status = mirror_mok_sb_state();
 
 	/*
 	 * Create the runtime MokIgnoreDB variable so the kernel can
 	 * make use of it
 	 */
-	efi_status = mok_ignore_db();
+///	efi_status = mok_ignore_db();
 
 	/*
 	 * Hand over control to the second stage bootloader
 	 */
-	efi_status = init_grub(image_handle);
+///	efi_status = init_grub(image_handle);
+  efi_status = init_grub_oneshot(image_handle);
 
 	shim_fini();
 	return efi_status;
+}
+
+/*
+ * Load and run grub. If that fails because grub isn't trusted, halt
+ * and display error.
+ */
+EFI_STATUS secure_boot(EFI_HANDLE image_handle)
+{
+  EFI_STATUS efi_status;
+
+  second_stage = L"\\grubx64.efi.signed";
+  efi_status = start_image(image_handle, second_stage);
+
+  if (efi_status == EFI_SECURITY_VIOLATION) {
+    Print(L"EFI_SECURITY_VIOLATION when attempting to validate: %s",
+          second_stage);
+  }
+
+  if (efi_status != EFI_SUCCESS) {
+    Print(L"start_image() returned %r\n", efi_status);
+    uefi_call_wrapper(BS->Stall, 1, 2000000);
+  }
+
+  // Ensure Machine is in 'user' mode, not 'setup' mode where KEK, PK are vulnerable:
+  // If machine is not in SecureBoot mode, pause with warning?
+  // - Already vulnerable, how to log event?  (Simply logging to file in EFI partition is
+  //   better than nothing...  Can we log to iDRAC / UEFI variable?)
+  // - Stretch goal: can TPM be utilized here?
+  //   - e.g. TPM can only be enabled if SecureBoot is enabled.  Can TPM enrypt / log events?
+  //     A limited, rolling log is fine...
+  // - Halt or continue?
+
+  // Load image:
+  // 1) Read a config file to define efi/kernel file, kernel args (else, hard-code)?
+
+  // Validate image (do not allow use of MOK database):
+  // 1) Check dbx blacklist hashes (ignore certs?):
+  // 2) Check built-in blacklist (how should this be done?):
+  // 3) Load db certs (purposefully ignore db hashes?):
+  // 4) Ensure blacklist certs are not present (if so, fail!):
+
+  // Relocate image:
+
+  // Execute image:
+  // 1) If grub2, need to audit proper signing of kernel...
+  // 2) If using kernel's EFI shim, need to provide kernel args...
+
+  return efi_status;
 }
